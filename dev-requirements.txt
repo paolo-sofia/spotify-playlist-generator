@@ -9,3 +9,5 @@ sqlalchemy==2.0.23
 mlflow==2.9.2
 apache-airflow==2.8.0
 pre-commit==3.6.0
+requests==2.31.0
+spotdl==
