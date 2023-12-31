@@ -1,12 +1,66 @@
+import dataclasses
 import logging
 import pathlib
 import sys
 from functools import lru_cache
 from http import HTTPStatus
+from typing import Type
 
 import requests
 import tomllib
 from cachetools.func import ttl_cache
+from torch import nn
+
+
+@dataclasses.dataclass
+class Hyperparameters:
+    """Data class for storing hyperparameters used in training.
+
+    Attributes:
+        BATCH_SIZE (int): The batch size for training.
+        IMAGE_SIZE (int): The size of the input images.
+        EPOCHS (int): The number of training epochs.
+        LEARNING_RATE (float): The learning rate for the optimizer.
+        LEARNING_RATE_DECAY (int): The learning rate decay.
+        TRAIN_SIZE (float): The proportion of the data used for training.
+        BASE_CHANNEL_SIZE (int): The base number of channels for the model.
+        LATENT_DIM (int): The dimension of the latent space.
+        NUM_INPUT_CHANNELS (int): The number of input channels.
+        T_0 (int): The T_0 parameter for the learning rate scheduler.
+        T_mult (int): The T_mult parameter for the learning rate scheduler.
+        EARLY_STOPPING_PATIENCE (int): The patience for early stopping.
+        EARLY_STOPPING_MIN_DELTA (float): The minimum delta for early stopping.
+        OVERFIT_BATCHES (int): The number of batches to overfit on.
+        LOSS (nn.Module): The loss function used for training.
+        CROP_SIZE_SECONDS (int): The size of the cropped audio in seconds.
+        SEED (int): The random seed for reproducibility.
+        PRECISION (int): The floating point precision used for training.
+        GRADIENT_ACCUMULATION_BATCHES (int): The number of batches to run before updating the weights
+    """
+
+    BATCH_SIZE: int
+    IMAGE_SIZE: int
+    TRAIN_SIZE: float
+    VALID_SIZE: float
+    TEST_SIZE: float
+    BASE_CHANNEL_SIZE: int
+    LATENT_DIM: int
+    NUM_INPUT_CHANNELS: int
+    EPOCHS: int
+    LEARNING_RATE: float
+    LEARNING_RATE_DECAY: float
+    T_0: int
+    T_mult: int
+    EARLY_STOPPING_PATIENCE: int
+    EARLY_STOPPING_MIN_DELTA: float
+    OVERFIT_BATCHES: int
+    CROP_SIZE_SECONDS: int
+    SEED: int
+    GRADIENT_CLIP_VAL: float
+    GRADIENT_CLIP_TYPE: str
+    PRECISION: int
+    GRADIENT_ACCUMULATION_BATCHES: int
+    LOSS: nn.Module = nn.L1Loss
 
 
 def get_global_config() -> dict[str, str | int | float | bool]:
@@ -18,6 +72,7 @@ def get_global_config() -> dict[str, str | int | float | bool]:
     Examples:
         >>> config = get_global_config()
     """
+    a = pathlib.Path.cwd()
     with pathlib.Path("pyproject.toml").open("rb") as f:
         return tomllib.load(f)
 
@@ -110,3 +165,24 @@ def get_dir_absolute_path(dir_name: str) -> pathlib.Path:
 
 config: dict[str, str | float | int | bool] = get_global_config()
 logger: logging.Logger = set_logger(config.get("title", ""))
+
+
+def dataclass_from_dict(class_: Type, dictionary: dict[str, str | float | int]) -> dict[str, str | float | int] | Type:
+    """Converts a dictionary to a dataclass instance.
+
+    Args:
+        class_: The dataclass type.
+        dictionary: The dictionary to convert.
+
+    Returns:
+        Union[dict[str, Union[str, float, int]], dataclasses.dataclass]: The converted dataclass instance or the
+            original dictionary.
+    """
+    try:
+        field_types: dict = {f.name: f.type for f in dataclasses.fields(class_)}
+        # print(f"field_types: {field_types}")
+        # print(f"dictionary: {dictionary}")
+        return class_(**{f: dataclass_from_dict(field_types.get(f), dictionary.get(f)) for f in dictionary})
+    except Exception:
+        # print(f"EXCEPTION: {e}")
+        return dictionary  # The object is not a dataclass field
