@@ -60,7 +60,13 @@ class Hyperparameters:
     GRADIENT_CLIP_TYPE: str
     PRECISION: int
     GRADIENT_ACCUMULATION_BATCHES: int
+    N_FFT: int = 512
+    WIN_LENGTH: int = 512
+    HOP_LENGTH: int = 256
+    N_MELS: int = 256
     LOSS: nn.Module = nn.L1Loss
+
+
 
 
 def get_global_config() -> dict[str, str | int | float | bool]:

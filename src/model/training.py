@@ -52,13 +52,20 @@ train, valid, test = get_splits(
     data=songs_path, train_size=cfg.TRAIN_SIZE, valid_size=cfg.VALID_SIZE, test_size=cfg.TEST_SIZE, stratify_col=None
 )
 
+
+mel_spectrogram_params: dict[str, int] = {
+    "N_FFT": cfg.N_FFT,
+    "N_MELS": cfg.N_MELS,
+    "WIN_LENGTH": cfg.WIN_LENGTH,
+    "HOP_LENGTH": cfg.HOP_LENGTH,
+}
 train_dataloader = DataLoader(
     dataset=AudioDataset(
         data_path=train,
-        image_size=cfg.IMAGE_SIZE,
         mode="train",
         crop_size=cfg.CROP_SIZE_SECONDS,
         precision=cfg.PRECISION,
+        mel_spectrogram_param=mel_spectrogram_params,
     ),
     batch_size=cfg.BATCH_SIZE,
     num_workers=0,
@@ -70,10 +77,10 @@ train_dataloader = DataLoader(
 valid_dataloader = DataLoader(
     dataset=AudioDataset(
         data_path=valid,
-        image_size=cfg.IMAGE_SIZE,
         mode="valid",
         crop_size=cfg.CROP_SIZE_SECONDS,
         precision=cfg.PRECISION,
+        mel_spectrogram_param=mel_spectrogram_params,
     ),
     batch_size=cfg.BATCH_SIZE,
     num_workers=0,
@@ -91,7 +98,7 @@ logger = MLFlowLogger(
     experiment_name="lightning_experiment",
     save_dir=str(savedir),
     log_model=True,
-    run_name="overfit batch" if cfg.OVERFIT_BATCHES else "Test model checkpoint",
+    run_name="overfit batch" if cfg.OVERFIT_BATCHES else "Model no resize no regularization",
 )
 
 early_stop_callback: EarlyStopping = EarlyStopping(
@@ -122,13 +129,10 @@ model_checkpoint: ModelCheckpoint = ModelCheckpoint(
     enable_version_counter=True,
 )
 
-callbacks: list = (
-    [RichProgressBar(leave=True)] if cfg.OVERFIT_BATCHES else [early_stop_callback, RichProgressBar(leave=True)]
-)
+callbacks: list = [RichProgressBar()] if cfg.OVERFIT_BATCHES else [early_stop_callback, RichProgressBar()]
 callbacks.append(model_checkpoint)
 
 trainer: lightning.Trainer = lightning.Trainer(
-    # limit_train_batches=0.1,
     accelerator="gpu",
     num_nodes=1,
     precision=cfg.PRECISION,
