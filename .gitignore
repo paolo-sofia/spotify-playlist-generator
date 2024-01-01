@@ -161,5 +161,5 @@ cython_debug/
 
 data/
 /airflow/
-logs/*/artifacts/
-logs/*/checkpoints/
+/logs/mlruns/**/artifacts/
+/logs/mlruns/**/checkpoints/

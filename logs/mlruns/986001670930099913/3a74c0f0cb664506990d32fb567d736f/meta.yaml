@@ -1,0 +1,15 @@
+artifact_uri: file:///home/paolo/git/spotify-playlist-generator/src/../logs/mlruns/986001670930099913/3a74c0f0cb664506990d32fb567d736f/artifacts
+end_time: 1704030933131
+entry_point_name: ''
+experiment_id: '986001670930099913'
+lifecycle_stage: active
+run_id: 3a74c0f0cb664506990d32fb567d736f
+run_name: Training with no regularization on encoder
+run_uuid: 3a74c0f0cb664506990d32fb567d736f
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1704026548405
+status: 3
+tags: []
+user_id: paolo
