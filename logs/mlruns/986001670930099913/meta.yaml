@@ -1,6 +1,0 @@
-artifact_location: file:///home/paolo/git/spotify-playlist-generator/src/../logs/mlruns/986001670930099913
-creation_time: 1703965312765
-experiment_id: '986001670930099913'
-last_update_time: 1703965312765
-lifecycle_stage: active
-name: lightning_experiment
