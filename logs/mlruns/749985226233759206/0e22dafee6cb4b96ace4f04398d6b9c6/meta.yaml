@@ -1,0 +1,15 @@
+artifact_uri: file:///home/paolo/git/spotify-playlist-generator/logs/mlruns/749985226233759206/0e22dafee6cb4b96ace4f04398d6b9c6/artifacts
+end_time: 1704121208700
+entry_point_name: ''
+experiment_id: '749985226233759206'
+lifecycle_stage: active
+run_id: 0e22dafee6cb4b96ace4f04398d6b9c6
+run_name: Model resized no regularization
+run_uuid: 0e22dafee6cb4b96ace4f04398d6b9c6
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1704117113860
+status: 3
+tags: []
+user_id: paolo

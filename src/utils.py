@@ -65,6 +65,10 @@ class Hyperparameters:
     HOP_LENGTH: int = 256
     N_MELS: int = 256
     LOSS: nn.Module = nn.L1Loss
+    N_FFT: int = 512
+    WIN_LENGTH: int = 512
+    HOP_LENGTH: int = 256
+    N_MELS: int = 256
 
 
 

@@ -95,10 +95,10 @@ model._log_hyperparams = False
 
 savedir: pathlib.Path = pathlib.Path("/home/paolo/git/spotify-playlist-generator/logs/mlruns")
 logger = MLFlowLogger(
-    experiment_name="lightning_experiment",
+    experiment_name="Autoencoder",
     save_dir=str(savedir),
     log_model=True,
-    run_name="overfit batch" if cfg.OVERFIT_BATCHES else "Model no resize no regularization",
+    run_name="overfit batch" if cfg.OVERFIT_BATCHES else "Model resized no regularization",
 )
 
 early_stop_callback: EarlyStopping = EarlyStopping(
