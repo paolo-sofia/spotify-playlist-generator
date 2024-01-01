@@ -61,6 +61,10 @@ class Hyperparameters:
     PRECISION: int
     GRADIENT_ACCUMULATION_BATCHES: int
     LOSS: nn.Module = nn.L1Loss
+    N_FFT: int = 512
+    WIN_LENGTH: int = 512
+    HOP_LENGTH: int = 256
+    N_MELS: int = 256
 
 
 def get_global_config() -> dict[str, str | int | float | bool]:

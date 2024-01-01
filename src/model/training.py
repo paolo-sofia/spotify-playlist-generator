@@ -55,7 +55,7 @@ train, valid, test = get_splits(
 train_dataloader = DataLoader(
     dataset=AudioDataset(
         data_path=train,
-        image_size=cfg.IMAGE_SIZE,
+        image_size=cfg.INPUT_SIZE,
         mode="train",
         crop_size=cfg.CROP_SIZE_SECONDS,
         precision=cfg.PRECISION,
@@ -70,7 +70,7 @@ train_dataloader = DataLoader(
 valid_dataloader = DataLoader(
     dataset=AudioDataset(
         data_path=valid,
-        image_size=cfg.IMAGE_SIZE,
+        image_size=cfg.INPUT_SIZE,
         mode="valid",
         crop_size=cfg.CROP_SIZE_SECONDS,
         precision=cfg.PRECISION,
@@ -88,10 +88,10 @@ model._log_hyperparams = False
 
 savedir: pathlib.Path = pathlib.Path("/home/paolo/git/spotify-playlist-generator/logs/mlruns")
 logger = MLFlowLogger(
-    experiment_name="lightning_experiment",
+    experiment_name="Autoencoder",
     save_dir=str(savedir),
     log_model=True,
-    run_name="overfit batch" if cfg.OVERFIT_BATCHES else "Test model checkpoint",
+    run_name="overfit batch" if cfg.OVERFIT_BATCHES else "Model resized no regularization",
 )
 
 early_stop_callback: EarlyStopping = EarlyStopping(
@@ -122,13 +122,10 @@ model_checkpoint: ModelCheckpoint = ModelCheckpoint(
     enable_version_counter=True,
 )
 
-callbacks: list = (
-    [RichProgressBar(leave=True)] if cfg.OVERFIT_BATCHES else [early_stop_callback, RichProgressBar(leave=True)]
-)
+callbacks: list = [RichProgressBar()] if cfg.OVERFIT_BATCHES else [early_stop_callback, RichProgressBar()]
 callbacks.append(model_checkpoint)
 
 trainer: lightning.Trainer = lightning.Trainer(
-    # limit_train_batches=0.1,
     accelerator="gpu",
     num_nodes=1,
     precision=cfg.PRECISION,

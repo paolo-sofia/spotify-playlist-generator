@@ -169,14 +169,14 @@ class Autoencoder(lightning.LightningModule):
         super().__init__()
         self.hyperparam = hyperparam
         self.encoder = Encoder(
-            input_shape=self.hyperparam.IMAGE_SIZE,
+            input_shape=self.hyperparam.INPUT_SIZE,
             num_input_channels=self.hyperparam.NUM_INPUT_CHANNELS,
             base_channel_size=self.hyperparam.BASE_CHANNEL_SIZE,
             latent_dim=self.hyperparam.LATENT_DIM,
             act_fn=nn.Mish,
         )
         self.decoder = Decoder(
-            input_shape=self.hyperparam.IMAGE_SIZE,
+            input_shape=self.hyperparam.INPUT_SIZE,
             num_input_channels=self.hyperparam.NUM_INPUT_CHANNELS,
             base_channel_size=self.hyperparam.BASE_CHANNEL_SIZE,
             latent_dim=self.hyperparam.LATENT_DIM,
@@ -218,8 +218,8 @@ class Autoencoder(lightning.LightningModule):
             loss: The value of the loss metric to be logged.
             step: The step or phase of the training or validation process. Defaults to "train".
         """
-        self.log(f"{step}_loss", loss, prog_bar=True, logger=False, on_epoch=True, on_step=False)
-        self.logger.log_metrics({f"{step}_loss": loss.detach().item()}, step=self.current_epoch)
+        self.log(f"{step}_loss", loss, prog_bar=True, logger=True, on_epoch=True, on_step=False)
+        # self.log(f"{step}_loss_step", loss, prog_bar=False, logger=False, on_epoch=False, on_step=True)
 
     def training_step(self: Self, batch: tuple[torch.Tensor, ...], batch_idx: int) -> torch.Tensor:  # noqa: ARG002
         """Performs a training step on a batch of data.
