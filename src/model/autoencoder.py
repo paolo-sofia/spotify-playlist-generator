@@ -229,7 +229,7 @@ class Autoencoder(lightning.LightningModule):
             step: The step or phase of the training or validation process. Defaults to "train".
         """
         self.log(f"{step}_loss", loss, prog_bar=True, logger=True, on_epoch=True, on_step=False)
-        self.log(f"{step}_loss_step", loss, prog_bar=True, logger=False, on_epoch=False, on_step=True)
+        self.log(f"{step}_loss_step", loss, prog_bar=False, logger=False, on_epoch=False, on_step=True)
 
     def training_step(self: Self, batch: tuple[torch.Tensor, ...], batch_idx: int) -> torch.Tensor:  # noqa: ARG002
         """Performs a training step on a batch of data.
