@@ -4,10 +4,11 @@ from typing import Self
 
 import lightning
 import torch
-from optimizers.yogi import Yogi
 from torch import nn, optim
 
 from src.utils import Hyperparameters
+
+from .optimizers.yogi import Yogi
 
 
 class Encoder(nn.Module):
@@ -228,8 +229,7 @@ class Autoencoder(lightning.LightningModule):
             loss: The value of the loss metric to be logged.
             step: The step or phase of the training or validation process. Defaults to "train".
         """
-        self.log(f"{step}_loss", loss, prog_bar=True, logger=False, on_epoch=True, on_step=False)
-        self.logger.log_metrics({f"{step}_loss": loss.detach().item()}, step=self.current_epoch + 1)
+        self.log(f"{step}_loss", loss, prog_bar=True, logger=True, on_epoch=True, on_step=False)
 
     def training_step(self: Self, batch: tuple[torch.Tensor, ...], batch_idx: int) -> torch.Tensor:  # noqa: ARG002
         """Performs a training step on a batch of data.
