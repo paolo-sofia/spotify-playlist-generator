@@ -18,8 +18,8 @@ Nus2 = Tuple[float, float]
 
 __all__ = ("Yogi",)
 
-MIN = 0.0
-MAX = 1.0
+MIN: float = 0.0
+MAX: float = 1.0
 
 
 class Yogi(Optimizer):
@@ -54,6 +54,22 @@ class Yogi(Optimizer):
         initial_accumulator: float = 1e-6,
         weight_decay: float = 0,
     ) -> None:
+        """Initializes a Yogi optimizer.
+
+        Args:
+            params: The parameters to optimize.
+            lr: The learning rate (default: 1e-2).
+            betas: Coefficients used for computing running averages of gradient and its square (default: (0.9, 0.999)).
+            eps: Term added to the denominator to improve numerical stability (default: 1e-3).
+            initial_accumulator: Initial value of the accumulators (default: 1e-6).
+            weight_decay: Weight decay (L2 penalty) (default: 0).
+
+        Raises:
+            ValueError: If the learning rate, epsilon, beta parameters, or weight decay are invalid.
+
+        Returns:
+            None
+        """
         if lr <= MIN:
             raise ValueError(f"Invalid learning rate: {lr}")
         if eps < MIN:
@@ -65,7 +81,7 @@ class Yogi(Optimizer):
         if weight_decay < 0:
             raise ValueError(f"Invalid weight_decay value: {weight_decay}")
 
-        defaults = {
+        defaults: dict[str, int | float] = {
             "lr": lr,
             "betas": betas,
             "eps": eps,
@@ -80,7 +96,7 @@ class Yogi(Optimizer):
         Arguments:
             closure: A closure that reevaluates the model and returns the loss.
         """
-        loss = closure() if closure is not None else None
+        loss: float | None = closure() if closure is not None else None
         for group in self.param_groups:
             for p in group["params"]:
                 if p.grad is None:
