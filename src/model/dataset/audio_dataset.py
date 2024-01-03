@@ -9,7 +9,6 @@ from safetensors import safe_open
 from torch import nn
 from torch_audiomentations import OneOf
 from torchvision.transforms import v2
-from torchvision.transforms.v2 import Compose
 
 from .transforms import AddGaussianNoise, MinMaxNorm
 
@@ -19,7 +18,6 @@ class AudioDataset(torch.utils.data.Dataset):
 
     Args:
         data_path: The path to the audio data.
-        image_size: The desired size of the audio spectrogram images.
         crop_size: The size of the cropped audio in seconds.
         mode: The mode of the dataset, either "train", "valid", or "test". Defaults to "train".
     """
@@ -27,48 +25,51 @@ class AudioDataset(torch.utils.data.Dataset):
     def __init__(
         self: Self,
         data_path: np.ndarray | list[str],
-        image_size: int,
         crop_size: int,
         precision: int,
+        mel_spectrogram_param: dict[str, int],
         mode: str = "train",
     ) -> None:
         """Initializes the AudioDataset with the specified parameters.
 
         Args:
             data_path: The path to the audio data.
-            image_size: The desired size of the audio spectrogram images.
             crop_size: The size of the cropped audio in seconds.
             mode: The mode of the dataset, either "train", "valid", or "test". Defaults to "train".
         """
         assert mode in {"train", "valid", "test"}
         super().__init__()
         self.data_path: np.ndarray | list[str] = data_path
-        self.image_size: int = image_size
         self.crop_size: int = crop_size
         self.mode: str = mode
-        self.precision: dict[int, torch.float] = {
+        self.mel_spectrogram_param: dict[str, int] = mel_spectrogram_param
+        self.precision: torch.dtype = {
             16: torch.float16,
             32: torch.float32,
             64: torch.float64,
         }.get(precision)
-        # self._init_transforms()
+        self.sample_rate: int = 48000
 
-    def _get_transforms(self: Self, sample_rate: int) -> tuple[Compose, Compose]:
+        self._init_transforms()
+
+    def _init_transforms(self: Self) -> None:
         transforms: list[nn.Module] = [
             T.MelSpectrogram(
-                sample_rate=sample_rate,
-                n_fft=512,
-                win_length=512,
-                hop_length=256,
-                n_mels=256,
+                sample_rate=self.sample_rate,
+                n_fft=self.mel_spectrogram_param.get("N_FFT", 512),
+                win_length=self.mel_spectrogram_param.get("WIN_LENGTH", 512),
+                hop_length=self.mel_spectrogram_param.get("HOP_LENGTH", 256),
+                n_mels=self.mel_spectrogram_param.get("N_MELS", 256),
                 normalized=False,
             ),
             MinMaxNorm(),
-            v2.Resize(size=(self.image_size, self.image_size)),
+            # v2.Resize(
+            #     size=(self.mel_spectrogram_param.get("N_MELS", 256), 5626)
+            # ),  # needed because some samples can be of less than 30 seconds or have a different frame rate
             v2.ToDtype(self.precision, scale=False),
         ]
 
-        y_transforms = Compose(transforms)
+        self.y_transforms = v2.Compose(transforms)
         train_transforms = deepcopy(transforms)
 
         if self.mode == "train":
@@ -77,7 +78,7 @@ class AudioDataset(torch.utils.data.Dataset):
                 2, OneOf([T.TimeMasking(time_mask_param=100), T.FrequencyMasking(freq_mask_param=30)])
             )
 
-        return Compose(train_transforms), y_transforms
+        self.x_transforms = v2.Compose(train_transforms)
 
     def __len__(self: Self) -> int:
         """Returns the length of the dataset.
@@ -98,21 +99,21 @@ class AudioDataset(torch.utils.data.Dataset):
         """
         # print(self.data_path[index])
         with safe_open(self.data_path[index], framework="pt", device="cpu") as f:
-            sample_rate: int = f.get_tensor("sample_rate")
             audio: torch.Tensor = f.get_tensor("audio")
 
         num_frames: int = audio.shape[1]
-        crop_frames: int = self.crop_size * sample_rate
-        x_transforms, y_transforms = self._get_transforms(sample_rate)
+        crop_frames: int = self.crop_size * self.sample_rate
         if num_frames <= crop_frames:
-            return x_transforms(audio), y_transforms(audio)
+            frames_to_add: int = crop_frames - audio.shape[1]
+            audio = torch.cat([audio, torch.zeros((audio.shape[0], frames_to_add))], dim=1)
+            return self.x_transforms(audio), self.y_transforms(audio)
 
         x_transformed: torch.Tensor
         y_transformed: torch.Tensor
         while True:
             frame_offset: int = random.randint(0, num_frames - crop_frames)
             cropped_audio = audio[:, frame_offset : frame_offset + crop_frames]
-            x_transformed, y_transformed = x_transforms(cropped_audio), y_transforms(cropped_audio)
+            x_transformed, y_transformed = self.x_transforms(cropped_audio), self.y_transforms(cropped_audio)
             if not torch.isnan(x_transformed).sum() and not torch.isnan(x_transformed).sum():
                 break
         return x_transformed, y_transformed

@@ -64,4 +64,6 @@ class MinMaxNorm(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_min, x_max = x.min(), x.max()
         epsilon: torch.tensor = torch.tensor(1e-15, dtype=x.dtype)
+        # print(f"Min Max input shape: {x.shape}")
+
         return ((x - x_min) / (max(x_max - x_min, epsilon))) * (self.new_max - self.new_min) + self.new_min

@@ -60,11 +60,11 @@ class Hyperparameters:
     GRADIENT_CLIP_TYPE: str
     PRECISION: int
     GRADIENT_ACCUMULATION_BATCHES: int
-    LOSS: nn.Module = nn.L1Loss
     N_FFT: int = 512
     WIN_LENGTH: int = 512
     HOP_LENGTH: int = 256
     N_MELS: int = 256
+    LOSS: nn.Module = nn.L1Loss
 
 
 def get_global_config() -> dict[str, str | int | float | bool]:
@@ -76,9 +76,11 @@ def get_global_config() -> dict[str, str | int | float | bool]:
     Examples:
         >>> config = get_global_config()
     """
-    a = pathlib.Path.cwd()
-    with pathlib.Path("pyproject.toml").open("rb") as f:
-        return tomllib.load(f)
+    try:
+        with pathlib.Path("pyproject.toml").open("rb") as f:
+            return tomllib.load(f)
+    except Exception:
+        return {}
 
 
 @lru_cache()

@@ -4,10 +4,11 @@ from typing import Self
 
 import lightning
 import torch
-from optimizers.yogi import Yogi
 from torch import nn, optim
 
 from src.utils import Hyperparameters
+
+from .optimizers.yogi import Yogi
 
 
 class Encoder(nn.Module):
@@ -23,7 +24,6 @@ class Encoder(nn.Module):
 
     def __init__(
         self: Self,
-        input_shape: int,
         num_input_channels: int,
         base_channel_size: int,
         latent_dim: int,
@@ -40,11 +40,15 @@ class Encoder(nn.Module):
         """
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(num_input_channels, base_channel_size, kernel_size=3, padding=1, stride=2),  # 256 => 128
+            nn.Conv2d(
+                num_input_channels, base_channel_size, kernel_size=(3, 29), padding=1, stride=(2, 29)
+            ),  # 256 => 128
             # nn.LayerNorm([base_channel_size, input_shape // 2**1, input_shape // 2**1]),
             # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
             act_fn(),
-            nn.Conv2d(base_channel_size, 2 * base_channel_size, kernel_size=3, padding=1, stride=2),  # 128 => 64
+            nn.Conv2d(
+                base_channel_size, 2 * base_channel_size, kernel_size=(3, 5), padding=1, stride=(2, 3)
+            ),  # 128 => 64
             # nn.LayerNorm([base_channel_size * 2, input_shape // 2**2, input_shape // 2**2]),
             # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
             act_fn(),
@@ -89,7 +93,6 @@ class Decoder(nn.Module):
 
     def __init__(
         self: Self,
-        input_shape: int,
         num_input_channels: int,
         base_channel_size: int,
         latent_dim: int,
@@ -120,13 +123,23 @@ class Decoder(nn.Module):
             # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
             act_fn(),
             nn.ConvTranspose2d(
-                2 * base_channel_size, base_channel_size, kernel_size=3, padding=1, stride=2, output_padding=1
+                2 * base_channel_size,
+                base_channel_size,
+                kernel_size=(3, 5),
+                padding=1,
+                stride=(2, 3),
+                output_padding=(1, 2),
             ),  # 16x16 => 32x32
             # nn.LayerNorm([base_channel_size, input_shape // 2, input_shape // 2]),
             # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
             act_fn(),
             nn.ConvTranspose2d(
-                base_channel_size, num_input_channels, kernel_size=3, padding=1, stride=2, output_padding=1
+                base_channel_size,
+                num_input_channels,
+                kernel_size=(3, 29),
+                padding=1,
+                stride=(2, 29),
+                output_padding=(1, 2),
             ),  # 16x16 => 32x32
         )
 
@@ -169,14 +182,12 @@ class Autoencoder(lightning.LightningModule):
         super().__init__()
         self.hyperparam = hyperparam
         self.encoder = Encoder(
-            input_shape=self.hyperparam.INPUT_SIZE,
             num_input_channels=self.hyperparam.NUM_INPUT_CHANNELS,
             base_channel_size=self.hyperparam.BASE_CHANNEL_SIZE,
             latent_dim=self.hyperparam.LATENT_DIM,
             act_fn=nn.Mish,
         )
         self.decoder = Decoder(
-            input_shape=self.hyperparam.INPUT_SIZE,
             num_input_channels=self.hyperparam.NUM_INPUT_CHANNELS,
             base_channel_size=self.hyperparam.BASE_CHANNEL_SIZE,
             latent_dim=self.hyperparam.LATENT_DIM,
@@ -218,8 +229,7 @@ class Autoencoder(lightning.LightningModule):
             loss: The value of the loss metric to be logged.
             step: The step or phase of the training or validation process. Defaults to "train".
         """
-        self.log(f"{step}_loss", loss, prog_bar=True, logger=False, on_epoch=True, on_step=False)
-        self.logger.log_metrics({f"{step}_loss": loss.detach().item()}, step=self.current_epoch + 1)
+        self.log(f"{step}_loss", loss, prog_bar=True, logger=True, on_epoch=True, on_step=False)
 
     def training_step(self: Self, batch: tuple[torch.Tensor, ...], batch_idx: int) -> torch.Tensor:  # noqa: ARG002
         """Performs a training step on a batch of data.
