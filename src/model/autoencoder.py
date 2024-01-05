@@ -6,8 +6,7 @@ import lightning
 import torch
 from torch import nn, optim
 
-from src.utils import Hyperparameters
-
+from .hyperparameters import Hyperparameters
 from .optimizers.yogi import Yogi
 
 

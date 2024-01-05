@@ -1,0 +1,29 @@
+title = "spotify-playlist-generator"
+
+[mongodb]
+host = "127.0.0.1"
+port = 27017
+user = ""
+password = ""
+db_name = "spotify-playlist"
+playlist_collection = "playlist"
+song_collection = "song"
+counter_collection = "counter"
+
+[postgresql]
+host = ""
+port = ""
+user = ""
+password = ""
+db_name = ""
+
+
+[rabbitmq]
+host = ""
+port = ""
+playlist_queue = "playlist"
+song_queue = "song"
+counter_queue = "counter"
+
+[model]
+path = "logs/mlruns/749985226233759206/0e707c5e421c47098798cc5c91d9532b/artifacts/model/checkpoints/model_checkpoint/model_checkpoint.ckpt"
