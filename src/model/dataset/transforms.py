@@ -56,14 +56,22 @@ class Squeeze(torch.nn.Module):
 
 
 class MinMaxNorm(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, min_value: float = 0.0, max_value: float = 1.0):
         super().__init__()
-        self.new_min: float = 0.0
-        self.new_max: float = 1.0
+        self.new_min: float = min_value
+        self.new_max: float = max_value
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_min, x_max = x.min(), x.max()
         epsilon: torch.tensor = torch.tensor(1e-15, dtype=x.dtype)
-        # print(f"Min Max input shape: {x.shape}")
-
         return ((x - x_min) / (max(x_max - x_min, epsilon))) * (self.new_max - self.new_min) + self.new_min
+
+
+class ZScoreNorm(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        mean: torch.Tensor = x.mean()
+        std: torch.Tensor = x.std()
+        return (x - mean) / (std + 1e-8)

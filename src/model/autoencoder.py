@@ -4,10 +4,32 @@ from typing import Self
 
 import lightning
 import torch
+import torch.nn.functional as F
 from torch import nn, optim
+from torchmetrics import MeanAbsoluteError, MeanSquaredError
 
 from .hyperparameters import Hyperparameters
-from .optimizers.yogi import Yogi
+from .optimizers.adabelief import AdaBelief
+
+
+class CustomLoss(nn.Module):
+    def __init__(self: Self, penalty_weight: float = 1.0, reduction: str = "mean"):
+        super(CustomLoss, self).__init__()
+        self.penalty_weight = penalty_weight
+        self.reduction = reduction
+
+    def forward(self, predictions, targets) -> torch.Tensor:
+        l1_loss: torch.Tensor = F.l1_loss(predictions, targets, reduction=self.reduction)
+        mse_loss: torch.Tensor = F.mse_loss(predictions, targets, reduction=self.reduction)
+        return l1_loss + self.penalty_weight * mse_loss
+
+
+class PeriodicReLU(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.where(x > 0, torch.cos(x) * x, torch.sin(x))
 
 
 class Encoder(nn.Module):
@@ -24,6 +46,7 @@ class Encoder(nn.Module):
     def __init__(
         self: Self,
         num_input_channels: int,
+        input_shape: tuple[int, ...],
         base_channel_size: int,
         latent_dim: int,
         act_fn: nn.Module,
@@ -38,33 +61,51 @@ class Encoder(nn.Module):
            act_fn : Activation function used throughout the encoder network
         """
         super().__init__()
+        self.conv = nn.Conv2d(num_input_channels, base_channel_size, kernel_size=3, padding=1, stride=2)
+        self.act_fn = act_fn
+        self.base_channel_size = base_channel_size
+        self.num_input_channels = num_input_channels
+        self.input_shape = input_shape
+        self.latent_dim = latent_dim
         self.net = nn.Sequential(
             nn.Conv2d(
-                num_input_channels, base_channel_size, kernel_size=(3, 29), padding=1, stride=(2, 29)
-            ),  # 256 => 128
-            # nn.LayerNorm([base_channel_size, input_shape // 2**1, input_shape // 2**1]),
+                in_channels=self.num_input_channels,
+                out_channels=self.base_channel_size * 2,
+                kernel_size=(3, 3),
+                padding=(1, 3),
+                stride=(2, 2),
+            ),
+            # nn.LayerNorm([self.base_channel_size * 2, self.input_shape[1] // 2**1, self.input_shape[2] // 2**1]),
             # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
             act_fn(),
             nn.Conv2d(
-                base_channel_size, 2 * base_channel_size, kernel_size=(3, 5), padding=1, stride=(2, 3)
-            ),  # 128 => 64
-            # nn.LayerNorm([base_channel_size * 2, input_shape // 2**2, input_shape // 2**2]),
-            # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
+                in_channels=self.base_channel_size * 2,
+                out_channels=self.base_channel_size * 2,
+                kernel_size=(3, 5),
+                padding=(1, 1),
+                stride=(2, 3),
+            ),
+            # nn.LayerNorm([self.base_channel_size * 2, self.input_shape[1] // 2**2, self.input_shape[2] // (2**2 + 2)]),
             act_fn(),
             nn.Conv2d(
-                2 * base_channel_size, 2 * base_channel_size, kernel_size=3, padding=1, stride=2
-            ),  # 64 => 32,32,32
-            # nn.LayerNorm([base_channel_size * 2, input_shape // 2**3, input_shape // 2**3]),
-            # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
+                in_channels=self.base_channel_size * 2,
+                out_channels=self.base_channel_size * 2,
+                kernel_size=(3, 5),
+                padding=(1, 1),
+                stride=(2, 3),
+            ),
+            # nn.LayerNorm([self.base_channel_size * 2, self.input_shape[1] // 2**3, self.input_shape[2] // (2**4 + 2)]),
             act_fn(),
             nn.Conv2d(
-                2 * base_channel_size, 2 * base_channel_size, kernel_size=3, padding=1, stride=2
-            ),  # 32 => 32,16,16
-            # nn.LayerNorm([base_channel_size * 2, input_shape // 2**4, input_shape // 2**4]),
-            # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
+                in_channels=self.base_channel_size * 2,
+                out_channels=self.base_channel_size * 2,
+                kernel_size=(3, 5),
+                padding=(1, 1),
+                stride=(2, 4),
+            ),
             act_fn(),
             nn.Flatten(),
-            nn.Linear(512 * base_channel_size, latent_dim),
+            nn.Linear(in_features=576 * self.base_channel_size, out_features=self.latent_dim),
             act_fn(),
         )
 
@@ -93,6 +134,7 @@ class Decoder(nn.Module):
     def __init__(
         self: Self,
         num_input_channels: int,
+        input_shape: tuple[int, ...],
         base_channel_size: int,
         latent_dim: int,
         act_fn: nn.Module,
@@ -107,39 +149,57 @@ class Decoder(nn.Module):
            act_fn : Activation function used throughout the decoder network
         """
         super().__init__()
-        self.linear = nn.Sequential(nn.Linear(latent_dim, 512 * base_channel_size), act_fn())
+        self.act_fn = act_fn
+        self.base_channel_size = base_channel_size
+        self.num_input_channels = num_input_channels
+        self.input_shape = input_shape
+        self.latent_dim = latent_dim
+        self.linear = nn.Sequential(
+            nn.Linear(self.latent_dim, self.base_channel_size * 576),
+            act_fn(),
+            nn.Unflatten(dim=1, unflattened_size=(self.base_channel_size * 2, 16, 18)),
+        )
         self.net = nn.Sequential(
             nn.ConvTranspose2d(
-                2 * base_channel_size, 2 * base_channel_size, kernel_size=3, padding=1, stride=2, output_padding=1
-            ),  # 4x4 => 8x8
-            # nn.LayerNorm([base_channel_size * 2, input_shape // 2**3, input_shape // 2**3]),
-            # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
-            act_fn(),
-            nn.ConvTranspose2d(
-                2 * base_channel_size, 2 * base_channel_size, kernel_size=3, padding=1, stride=2, output_padding=1
-            ),  # 8x8 => 16x16
-            # nn.LayerNorm([base_channel_size * 2, input_shape // 2**2, input_shape // 2**2]),
-            # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
-            act_fn(),
-            nn.ConvTranspose2d(
-                2 * base_channel_size,
-                base_channel_size,
+                in_channels=self.base_channel_size * 2,
+                out_channels=self.base_channel_size * 2,
                 kernel_size=(3, 5),
-                padding=1,
-                stride=(2, 3),
-                output_padding=(1, 2),
-            ),  # 16x16 => 32x32
-            # nn.LayerNorm([base_channel_size, input_shape // 2, input_shape // 2]),
+                padding=(1, 1),
+                stride=(2, 4),
+                output_padding=(1, 1),
+            ),
+            # nn.LayerNorm([self.base_channel_size * 2, self.input_shape[1] // 2**3, self.input_shape[2] // (2**4 + 2)]),
             # torchvision.ops.drop_block.DropBlock2d(p=0.3, block_size=5),
             act_fn(),
             nn.ConvTranspose2d(
-                base_channel_size,
-                num_input_channels,
-                kernel_size=(3, 29),
-                padding=1,
-                stride=(2, 29),
-                output_padding=(1, 2),
-            ),  # 16x16 => 32x32
+                in_channels=self.base_channel_size * 2,
+                out_channels=self.base_channel_size * 2,
+                kernel_size=(3, 5),
+                padding=(1, 1),
+                stride=(2, 3),
+                output_padding=(1, 0),
+            ),
+            # nn.LayerNorm([self.base_channel_size * 2, self.input_shape[1] // 2**2, self.input_shape[2] // (2**2 + 2)]),
+            act_fn(),
+            nn.ConvTranspose2d(
+                in_channels=self.base_channel_size * 2,
+                out_channels=self.base_channel_size * 2,
+                kernel_size=(3, 5),
+                padding=(1, 1),
+                stride=(2, 3),
+                output_padding=(1, 0),
+            ),
+            # nn.LayerNorm([self.base_channel_size * 2, self.input_shape[1] // 2**1, self.input_shape[2] // 2**1]),
+            act_fn(),
+            nn.ConvTranspose2d(
+                in_channels=self.base_channel_size * 2,
+                out_channels=self.num_input_channels,
+                kernel_size=(3, 3),
+                padding=(1, 3),
+                stride=(2, 2),
+                output_padding=(1, 1),
+            ),
+            # nn.Sigmoid(),
         )
 
     def forward(self: Self, inputs: torch.Tensor) -> torch.Tensor:
@@ -152,7 +212,6 @@ class Decoder(nn.Module):
             The output tensor produced by the network.
         """
         x = self.linear(inputs)
-        x = x.reshape(x.shape[0], -1, 16, 16)
         return self.net(x)
 
 
@@ -167,7 +226,7 @@ class Autoencoder(lightning.LightningModule):
     def __init__(
         self: Self,
         hyperparam: Hyperparameters,
-        loss: nn.Module = nn.L1Loss,
+        loss: nn.Module = CustomLoss,
     ) -> None:
         """Initializes the Autoencoder model.
 
@@ -181,6 +240,7 @@ class Autoencoder(lightning.LightningModule):
         super().__init__()
         self.hyperparam = hyperparam
         self.encoder = Encoder(
+            input_shape=(self.hyperparam.NUM_INPUT_CHANNELS, self.hyperparam.N_MELS, 1188),
             num_input_channels=self.hyperparam.NUM_INPUT_CHANNELS,
             base_channel_size=self.hyperparam.BASE_CHANNEL_SIZE,
             latent_dim=self.hyperparam.LATENT_DIM,
@@ -188,11 +248,13 @@ class Autoencoder(lightning.LightningModule):
         )
         self.decoder = Decoder(
             num_input_channels=self.hyperparam.NUM_INPUT_CHANNELS,
+            input_shape=(self.hyperparam.NUM_INPUT_CHANNELS, self.hyperparam.N_MELS, 1188),
             base_channel_size=self.hyperparam.BASE_CHANNEL_SIZE,
             latent_dim=self.hyperparam.LATENT_DIM,
             act_fn=nn.Mish,
         )
-        self.loss = loss(reduction="mean")  # nn.MSELoss(reduction="mean")
+        self.loss = loss()
+        self.metrics = {"mae": MeanAbsoluteError(), "mse": MeanSquaredError()}
 
     def forward(self: Self, inputs: torch.Tensor) -> torch.Tensor:
         """Passes the inputs through the network and returns the output.
@@ -206,22 +268,30 @@ class Autoencoder(lightning.LightningModule):
         z = self.encoder(inputs)
         return self.decoder(z)
 
-    def configure_optimizers(self: Self) -> dict[str, optim.Optimizer | optim.lr_scheduler.LRScheduler | str]:
+    def configure_optimizers(self: Self) -> optim.Optimizer:
         """Choose what optimizers and learning-rate schedulers to use in your optimization.
 
         Returns:
             A dictionary containing the optimizer, learning rate scheduler, and monitor metric.
         """
-        optimizer: optim.Optimizer = Yogi(
-            params=self.parameters(), lr=self.hyperparam.LEARNING_RATE, weight_decay=self.hyperparam.LEARNING_RATE_DECAY
+        return AdaBelief(
+            params=self.parameters(),
+            lr=self.hyperparam.LEARNING_RATE,
+            weight_decay=self.hyperparam.LEARNING_RATE_DECAY,
+            weight_decouple=True,
+            rectify=False,
+            fixed_decay=False,
+            amsgrad=False,
         )
 
-        scheduler: optim.lr_scheduler.LRScheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer=optimizer, T_0=self.hyperparam.T_0, T_mult=self.hyperparam.T_mult
-        )
-        return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "valid_loss"}
-
-    def _log_metrics(self: Self, loss: float, step: str = "train") -> None:
+    def _log_metrics(
+        self: Self,
+        loss: torch.Tensor,
+        metrics: dict[str, torch.Tensor],
+        pred: torch.Tensor,
+        y_true: torch.Tensor,
+        step: str = "train",
+    ) -> None:
         """Logs the specified loss metric during training or validation.
 
         Args:
@@ -229,8 +299,14 @@ class Autoencoder(lightning.LightningModule):
             step: The step or phase of the training or validation process. Defaults to "train".
         """
         self.log(f"{step}_loss", loss, prog_bar=True, logger=True, on_epoch=True, on_step=False)
+        self.logger.log_metrics(
+            {f"{step}_{k}": metric.detach().item() for k, metric in metrics.items()}, step=self.global_step
+        )
+        self.logger.log_metrics(
+            {"pred_mean": pred, "real_mean": y_true, "mean_diff": y_true - pred}, step=self.global_step
+        )
 
-    def training_step(self: Self, batch: tuple[torch.Tensor, ...], batch_idx: int) -> torch.Tensor:  # noqa: ARG002
+    def training_step(self: Self, batch: tuple[torch.Tensor, ...], batch_idx: int) -> torch.Tensor:
         """Performs a training step on a batch of data.
 
         Args:
@@ -242,7 +318,7 @@ class Autoencoder(lightning.LightningModule):
         """
         return self._forward(batch, step="train")
 
-    def validation_step(self: Self, batch: tuple[torch.Tensor, ...], batch_idx: int) -> torch.Tensor:  # noqa: ARG002
+    def validation_step(self: Self, batch: tuple[torch.Tensor, ...], batch_idx: int) -> torch.Tensor:
         """Performs a validation step on a batch of data.
 
         Args:
@@ -254,7 +330,7 @@ class Autoencoder(lightning.LightningModule):
         """
         return self._forward(batch, step="valid")
 
-    def test_step(self: Self, batch: tuple[torch.Tensor, ...], batch_idx: int) -> torch.Tensor:  # noqa: ARG002
+    def test_step(self: Self, batch: tuple[torch.Tensor, ...], batch_idx: int) -> torch.Tensor:
         """Performs a validation step on a batch of data.
 
         Args:
@@ -277,9 +353,13 @@ class Autoencoder(lightning.LightningModule):
             The calculated loss value.
         """
         x, y = batch
-        x_hat = self.forward(x)
-        loss = self.loss(x_hat, y)
-        self._log_metrics(loss=loss, step=step)
+        x_hat: torch.Tensor = self.forward(x)
+        loss: torch.Tensor = self.loss(x_hat, y)
+        metrics: dict[str, torch.Tensor] = {k: metric.to(self.device)(x_hat, y) for k, metric in self.metrics.items()}
+
+        self._log_metrics(
+            loss=loss, step=step, metrics=metrics, pred=x_hat.mean().detach().item(), y_true=y.mean().detach().item()
+        )
         return loss
 
 
@@ -290,7 +370,7 @@ def initialize_weights(layer: nn.Module) -> None:
         layer: The layer of the network.
     """
     if isinstance(layer, (nn.Conv2d, nn.ConvTranspose2d, nn.Linear)):
-        nn.init.kaiming_uniform_(layer.weight.data, a=0.0003, nonlinearity="relu")
+        (nn.init.xavier_uniform_(layer.weight.data, gain=nn.init.calculate_gain("relu")),)
         if layer.bias is not None:
             nn.init.constant_(layer.bias.data, 0)
     elif isinstance(layer, nn.LayerNorm):

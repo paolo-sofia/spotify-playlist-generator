@@ -6,6 +6,9 @@ from typing import Any
 
 import tomllib
 
+from src.model.hyperparameters import Hyperparameters
+from src.utils.utils import dataclass_from_dict
+
 
 @lru_cache()
 def set_logger(name: str) -> logging.Logger:
@@ -40,6 +43,11 @@ def get_global_config() -> dict[str, str | int | float | bool]:
             return tomllib.load(f)
     except Exception:
         return {}
+
+
+def load_model_hyperparameters() -> Hyperparameters:
+    with (pathlib.Path.cwd() / "config" / "model.toml").open("rb") as f:
+        return dataclass_from_dict(Hyperparameters, tomllib.load(f))
 
 
 config: dict[str, Any] = get_global_config()

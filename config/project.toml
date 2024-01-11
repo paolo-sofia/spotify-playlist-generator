@@ -26,4 +26,5 @@ song_queue = "song"
 counter_queue = "counter"
 
 [model]
-path = "logs/mlruns/749985226233759206/0e707c5e421c47098798cc5c91d9532b/artifacts/model/checkpoints/model_checkpoint/model_checkpoint.ckpt"
+path = "data/models/torchscript_model.pt"
+k = 5

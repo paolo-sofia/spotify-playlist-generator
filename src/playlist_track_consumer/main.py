@@ -13,10 +13,28 @@ from src.utils.spotify import download_song
 
 
 def delete_playlist_counter(collection: Collection, playlist_id: str) -> None:
+    """Deletes a playlist counter from the collection.
+
+    Args:
+        collection (pymongo.collection.Collection): The collection to delete from.
+        playlist_id (str): The ID of the playlist counter to delete.
+
+    Returns:
+        None
+    """
     collection.delete_one(filter={"playlist_id": playlist_id})
 
 
 def send_playlist_processed_event(connection: pika.BlockingConnection, playlist_id: str) -> None:
+    """Sends a playlist processed event to the specified RabbitMQ connection.
+
+    Args:
+        connection (pika.BlockingConnection): The RabbitMQ connection to use.
+        playlist_id (str): The ID of the processed playlist.
+
+    Returns:
+        None
+    """
     channel: BlockingChannel = connection.channel()
     channel.queue_declare(config["rabbitmq"]["counter"])
     channel.basic_publish(

@@ -1,17 +1,12 @@
-import pathlib
-
-import tomllib
 import torch
 import torchaudio
 import torchaudio.transforms as T
-from torch import nn
 from torchvision.transforms import v2
 
 from src.db.schemas.song_embedding import SongEmbedding
-from src.model.autoencoder import Autoencoder
 from src.model.dataset.transforms import MinMaxNorm
 from src.model.hyperparameters import Hyperparameters
-from src.utils.utils import dataclass_from_dict
+from src.utils.config import config, load_model_hyperparameters
 
 
 def define_transforms(config: Hyperparameters) -> v2.Compose:
@@ -23,7 +18,9 @@ def define_transforms(config: Hyperparameters) -> v2.Compose:
     Returns:
         v2.Compose: The Compose object containing data transformations.
     """
-    precision: torch.dtype = {16: torch.float16, 32: torch.float32, 64: torch.float64}.get(config.PRECISION, 32)
+    precision: torch.dtype = {16: torch.float16, 32: torch.float32, 64: torch.float64}.get(
+        config.PRECISION_INFERENCE, 32
+    )
 
     return v2.Compose(
         [
@@ -45,17 +42,11 @@ def preprocess(tensor: torch.Tensor) -> torch.Tensor:
     return transforms(tensor).to(device).unsqueeze(dim=0)
 
 
-def load_model() -> nn.Module:
-    return Autoencoder.load_from_checkpoint("", hyperparam=cfg).eval().half().to(device)
-
-
-def load_model_hyperparameters() -> Hyperparameters:
-    with (pathlib.Path.cwd() / "config" / "model.toml").open("rb") as f:
-        return dataclass_from_dict(Hyperparameters, tomllib.load(f))
+def load_model() -> torch.jit._script.RecursiveScriptModule:
+    return torch.jit.load(config.get("model", {}).get("path"))
 
 
 def wrap_prediction_to_song_embedding(tensor: torch.Tensor, song_id: str) -> SongEmbedding:
-    print(tensor.shape)
     return SongEmbedding(id=song_id, embedding=tensor.tolist())
 
 
@@ -73,9 +64,9 @@ def predict_audio(audio: torch.Tensor) -> torch.Tensor:
         audio = audio[:, : num_frames - frames_to_remove]
 
     num_slices: int = audio.shape[1] // cfg.CROP_FRAMES
-    print(f"num_frames: {audio.shape[1]} - num_slices: {num_slices}")
     slices: list[torch.Tensor] = torch.chunk(audio, num_slices, dim=1)
-    return torch.stack([model.encoder(preprocess(audio_slice)) for audio_slice in slices]).squeeze().mean(dim=0)
+    embeddings = torch.stack([model.encoder(preprocess(audio_slice)) for audio_slice in slices]).squeeze()
+    return embeddings if num_slices == 1 else embeddings.mean(dim=0)
 
 
 def get_song_embedding(track: dict[str, str]) -> SongEmbedding:
@@ -92,6 +83,7 @@ def get_song_embedding(track: dict[str, str]) -> SongEmbedding:
 
 
 cfg: Hyperparameters = load_model_hyperparameters()
-model: nn.Module = load_model()
+model: torch.jit._script.RecursiveScriptModule = load_model()
 transforms: v2.Compose = define_transforms(cfg)
-device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "")
+# device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "")
+device: torch.device = torch.device("cpu")

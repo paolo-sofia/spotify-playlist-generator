@@ -1,6 +1,0 @@
-artifact_location: file:///home/paolo/git/spotify-playlist-generator/logs/mlruns/749985226233759206
-creation_time: 1704116947367
-experiment_id: '749985226233759206'
-last_update_time: 1704116947367
-lifecycle_stage: active
-name: Autoencoder

@@ -52,6 +52,7 @@ class Hyperparameters:
     GRADIENT_CLIP_VAL: float
     GRADIENT_CLIP_TYPE: str
     PRECISION: int
+    PRECISION_INFERENCE: int
     GRADIENT_ACCUMULATION_BATCHES: int
     LOSS: nn.Module = nn.L1Loss
     CROP_FRAMES: int = 0

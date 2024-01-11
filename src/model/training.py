@@ -8,16 +8,23 @@ import sys
 import lightning
 import tomllib
 import torch
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, RichProgressBar
+from lightning.pytorch.callbacks import (
+    EarlyStopping,
+    ModelCheckpoint,
+    RichProgressBar,
+    StochasticWeightAveraging,
+)
 from lightning.pytorch.loggers import MLFlowLogger
 from torch.utils.data import DataLoader
+from torchsummary import summary
 
 sys.path.append(str(pathlib.Path.cwd()))
 
 from src.model.autoencoder import Autoencoder, initialize_weights
 from src.model.dataset.audio_dataset import AudioDataset
 from src.model.dataset.utils import get_splits
-from src.utils import Hyperparameters, dataclass_from_dict
+from src.model.hyperparameters import Hyperparameters
+from src.utils.utils import dataclass_from_dict
 
 torch.set_float32_matmul_precision("medium")
 
@@ -28,17 +35,28 @@ EXPERIMENT_NAME: str = cli_args.experiment_name
 
 
 def get_dataloaders(
-    train: list, valid: list, test: list, mel_spectrogram_params: dict[str, int]
+    train_split: list, valid_split: list, test_split: list, params: dict[str, int]
 ) -> dict[str, torch.utils.data.DataLoader]:
-    dataloaders: dict[str, torch.utils.data.DataLoader] = {"train": None, "valid": None, "test": None}
-    for split_name, split in {"train": train, "valid": valid, "test": test}.items():
-        dataloaders[split_name] = DataLoader(
+    """Returns a dictionary of data loaders for the train, valid, and test splits.
+
+    Args:
+        train_split (list): The list of training data.
+        valid_split (list): The list of validation data.
+        test_split (list): The list of test data.
+        params (dict[str, int]): The parameters for the audio dataset.
+
+    Returns:
+        dict[str, torch.utils.data.DataLoader]: A dictionary containing the data loaders for each split.
+    """
+    dataloaders_dict: dict[str, torch.utils.data.DataLoader] = {"train": None, "valid": None, "test": None}
+    for split_name, split in {"train": train_split, "valid": valid_split, "test": test_split}.items():
+        dataloaders_dict[split_name] = DataLoader(
             dataset=AudioDataset(
                 data_path=split,
                 mode=split_name,
                 crop_size=cfg.CROP_SIZE_SECONDS,
                 precision=cfg.PRECISION,
-                mel_spectrogram_param=mel_spectrogram_params,
+                mel_spectrogram_param=params,
             ),
             batch_size=cfg.BATCH_SIZE,
             num_workers=0,
@@ -47,7 +65,7 @@ def get_dataloaders(
             persistent_workers=False,
         )
 
-    return dataloaders
+    return dataloaders_dict
 
 
 with (pathlib.Path.cwd() / "config" / "model.toml").open("rb") as f:
@@ -66,7 +84,7 @@ mel_spectrogram_params: dict[str, int] = {
     "WIN_LENGTH": cfg.WIN_LENGTH,
     "HOP_LENGTH": cfg.HOP_LENGTH,
 }
-dataloaders = get_dataloaders(train=train, valid=valid, test=test, mel_spectrogram_params=mel_spectrogram_params)
+dataloaders = get_dataloaders(train_split=train, valid_split=valid, test_split=test, params=mel_spectrogram_params)
 
 model = Autoencoder(hyperparam=cfg)
 model.apply(initialize_weights)
@@ -109,8 +127,10 @@ model_checkpoint: ModelCheckpoint = ModelCheckpoint(
     enable_version_counter=True,
 )
 
-callbacks: list = [RichProgressBar()] if cfg.OVERFIT_BATCHES else [early_stop_callback, RichProgressBar()]
-callbacks.append(model_checkpoint)
+callbacks: list = [model_checkpoint, RichProgressBar(), StochasticWeightAveraging(swa_lrs=1e-2)]
+if not cfg.OVERFIT_BATCHES:
+    callbacks.append(early_stop_callback)
+
 
 trainer: lightning.Trainer = lightning.Trainer(
     accelerator="gpu",
@@ -139,9 +159,15 @@ trainer: lightning.Trainer = lightning.Trainer(
 )
 
 logger.log_hyperparams(cfg.__dict__)
-# print(cfg.__dict__)
+summary(model, (2, 256, 1292))
 trainer.fit(
-    model=model, train_dataloaders=dataloaders.get("train"), val_dataloaders=dataloaders.get("valid"), ckpt_path=None
+    model=model,
+    train_dataloaders=dataloaders.get("train"),
+    val_dataloaders=dataloaders.get("valid"),
+    ckpt_path=None,
 )
-trainer.test(model=model, dataloaders=dataloaders.get("test"), ckpt_path="best")
+
+if not cfg.OVERFIT_BATCHES:
+    trainer.test(model=model, dataloaders=dataloaders.get("test"), ckpt_path="best")
+
 os.system("notify-send 'Training complete!'")

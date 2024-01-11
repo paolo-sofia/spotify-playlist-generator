@@ -5,16 +5,20 @@ import pika
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
+from sqlalchemy.orm import Session
 
-from src.db.queries.embeddings import insert_embeddings
+from src.db.queries.embeddings import get_closest_embedding, insert_embeddings
+from src.db.schemas.song_embedding import SongEmbedding
+from src.db.tables.embeddings import SongEmbedding as SongEmbeddingSQL
+from src.model.inference.inference import get_song_embedding
 from src.utils.config import config, logger
 
 
-def generate_playlist(db_client: MongoClient, playlist_id: str) -> bool:
+def generate_playlist(db_client: Session, playlist_id: str) -> bool:
     tracks: list[dict[str, str]] = get_playlist_tracks(db_client, playlist_id)
-    embeddings: list[dict[str, str | list[float]]] = [get_song_embedding(track) for track in tracks]
-    closest_embeddings: list[dict[str, str | list[float]]] = get_closest_embeddings(embeddings, config["model"]["k"])
-    insert_embeddings(embeddings)
+    embeddings: list[SongEmbedding] = [get_song_embedding(track) for track in tracks]
+    closest_embeddings: list[SongEmbeddingSQL] = get_closest_embedding(embeddings, config["model"]["k"])
+    insert_embeddings(db_client, embeddings)
     extract_playlist_from_embeddings(embeddings, closest_embeddings)
     publish_playlist()
     return True
