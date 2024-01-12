@@ -54,6 +54,7 @@ def get_dataloaders(
             dataset=AudioDataset(
                 data_path=split,
                 mode=split_name,
+                sample_rate=cfg.SAMPLE_RATE,
                 crop_size=cfg.CROP_SIZE_SECONDS,
                 precision=cfg.PRECISION,
                 mel_spectrogram_param=params,

@@ -26,6 +26,7 @@ class AudioDataset(torch.utils.data.Dataset):
         self: Self,
         data_path: np.ndarray | list[str],
         crop_size: int,
+        sample_rate: int,
         precision: int,
         mel_spectrogram_param: dict[str, int],
         mode: str = "train",
@@ -48,7 +49,7 @@ class AudioDataset(torch.utils.data.Dataset):
             32: torch.float32,
             64: torch.float64,
         }.get(precision)
-        self.sample_rate: int = 44100
+        self.sample_rate: int = sample_rate
 
         # self._init_transforms()
 
@@ -65,7 +66,6 @@ class AudioDataset(torch.utils.data.Dataset):
                 power=2,
             ),
             T.AmplitudeToDB(top_db=80.0),
-            # ZScoreNorm(),
             MinMaxNorm(min_value=0.0, max_value=1.0),
             v2.ToDtype(self.precision, scale=False),
         ]
@@ -78,14 +78,6 @@ class AudioDataset(torch.utils.data.Dataset):
             )
         return v2.Compose(train_transforms), v2.Compose(transforms)
 
-    # def waveform_transform(self: Self, waveform: torch.Tensor, sample_rate: int) -> torch.Tensor:
-    #     min_speed, max_speed = 0.5, 2.
-    #     min_volume, max_volume = 0.2, 2.
-    #     return OneOf([
-    #         T.Speed(orig_freq=sample_rate, factor=(max_speed-min_speed)*torch.rand(1) + min_speed),
-    #         T.Vol(gain=(max_volume-min_volume)*torch.rand(1) + min_volume)
-    #     ])(waveform)
-
     def __len__(self: Self) -> int:
         """Returns the length of the dataset.
 
@@ -94,7 +86,16 @@ class AudioDataset(torch.utils.data.Dataset):
         """
         return len(self.data_path)
 
-    def add_noise(self, tensor: torch.Tensor) -> torch.Tensor:
+    def add_noise(self: Self, tensor: torch.Tensor) -> torch.Tensor:
+        """Adds noise to the input tensor if in "train" mode.
+
+        Args:
+            self: The instance of the AudioDataset class.
+            tensor (torch.Tensor): The input tensor to add noise to.
+
+        Returns:
+            torch.Tensor: The tensor with added noise, or the original tensor if the mode is not "train".
+        """
         if self.mode != "train":
             return tensor
         noise = torch.randn_like(tensor)
@@ -115,17 +116,14 @@ class AudioDataset(torch.utils.data.Dataset):
             audio: torch.Tensor = f.get_tensor("audio")
             sample_rate: int = f.get_tensor("sample_rate").item()
 
-        # print(audio.shape)
         x_transforms, y_transforms = self._init_transforms(sample_rate)
 
         num_frames: int = audio.shape[1]
         crop_frames: int = self.crop_size * sample_rate
-        # print(f"num_frames: {num_frames}, crop_frames: {crop_frames}, sample_rate: {sample_rate}")
         if num_frames <= crop_frames:
             frames_to_add: int = crop_frames - audio.shape[1]
             audio = torch.cat([audio, torch.zeros((audio.shape[0], frames_to_add))], dim=1)
             return x_transforms(self.add_noise(audio)), y_transforms(audio)
-            # return x_transforms(audio), y_transforms(audio)
 
         x_transformed: torch.Tensor
         y_transformed: torch.Tensor
@@ -133,7 +131,6 @@ class AudioDataset(torch.utils.data.Dataset):
             frame_offset: int = random.randint(0, num_frames - crop_frames)
             cropped_audio = audio[:, frame_offset : frame_offset + crop_frames]
             x_transformed, y_transformed = x_transforms(self.add_noise(cropped_audio)), y_transforms(cropped_audio)
-            # x_transformed, y_transformed = x_transforms(cropped_audio), y_transforms(cropped_audio)
             if not torch.isnan(x_transformed).sum() and not torch.isnan(x_transformed).sum():
                 break
         return x_transformed, y_transformed

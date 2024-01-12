@@ -277,7 +277,7 @@ class Autoencoder(lightning.LightningModule):
         return AdaBelief(
             params=self.parameters(),
             lr=self.hyperparam.LEARNING_RATE,
-            weight_decay=self.hyperparam.LEARNING_RATE_DECAY,
+            weight_decay=self.hyperparam.WEIGHT_DECAY,
             weight_decouple=True,
             rectify=False,
             fixed_decay=False,

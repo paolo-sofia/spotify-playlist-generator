@@ -21,4 +21,4 @@ class SongEmbedding(Base):
     )
 
     id: str = Column(String, primary_key=True)
-    embedding: list[Number] = Column(Vector(128))
+    embedding: list[Number] = Column(Vector(256))
